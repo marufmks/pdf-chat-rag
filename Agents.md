@@ -1,0 +1,133 @@
+# Agents.md — PDF Chat RAG WordPress Plugin
+
+## Project Identity
+A WordPress plugin enabling users to chat with uploaded PDF documents via a 
+Retrieval-Augmented Generation (RAG) pipeline. The plugin acts as a PHP orchestrator 
+and frontend host, delegating heavy AI/vector operations to a Python FastAPI 
+microservice (developed separately).
+
+## Tech Stack
+- **Backend**: PHP 7.4+, WordPress 6.0+, Composer (PSR-4)
+- **Frontend**: React via `@wordpress/scripts` (wp-scripts), `@wordpress/api-fetch`
+- **Database**: WordPress `wpdb` with custom tables
+- **AI/Vector**: Python FastAPI microservice (external), OpenAI API
+- **Patterns**: Singleton (Core\Plugin), Repository, Interface/Contract, REST API MVC
+
+## Architecture Rules
+
+### 1. PHP Namespace & Autoloading
+- **Namespace Root**: `PDFChatRAG\`
+- **PSR-4 Mapping**: `PDFChatRAG\` → `src/`
+- All classes must be `declare(strict_types=1);`
+- Only `Core\Plugin` is a Singleton. All other classes are instantiated normally.
+
+### 2. WordPress REST API
+- **Namespace**: `pdf-chat-rag/v1`
+- **Controllers**: Located in `src/Api/Controllers/`
+- **Permissions**: 
+  - Public endpoints (`/chat`, `/chat/history`) use `__return_true` but validate 
+    `session_id` and sanitize all inputs.
+  - Admin endpoints (`/pdf/upload`, `/settings`) require `manage_options`.
+- **Nonce Handling**: Frontend uses localized `wp_create_nonce('wp_rest')` passed via 
+  `X-WP-Nonce`. `api-fetch` middleware is configured in `assets/src/utils/api.js`.
+
+### 3. Database
+- Use `$wpdb` with prepared statements only.
+- Custom tables: `{prefix}pdf_chat_history` (exists), `{prefix}pdf_index` (planned, migration missing)
+- Migrations are idempotent (use `dbDelta` via `Activator` on plugin activation).
+- JSON storage for vector context is allowed in `longtext` columns.
+
+### 4. Services & Contracts
+- All external dependencies (LLM, Vector DB, PDF Parser) must implement an interface 
+  from `src/Services/Contracts/`.
+- The RAG `Pipeline` class orchestrates: Embed → Retrieve → Generate → Store.
+- The `MicroserviceClient` bridges PHP to the Python FastAPI service using 
+  `wp_remote_post()` with 60s timeout.
+
+### 5. Frontend (wp-scripts)
+- **Entry Points**: `assets/src/admin/index.js`, `assets/src/frontend/index.js`
+- **Build Output**: `build/` (committed or built in CI)
+- **Asset Loading**: `Frontend\AssetLoader` enqueues scripts and localizes 
+  `window.pdfChatRag` with `restUrl` and `nonce`.
+- Use WordPress components (`@wordpress/components`) for admin UI.
+- Frontend chat widget is a lightweight React app mounted to a dynamically created div.
+
+### 6. Security
+- Sanitize: `sanitize_text_field()`, `sanitize_textarea_content()` for inputs.
+- Capabilities: Always check `current_user_can()` for admin routes.
+- File Uploads: Restrict to `.pdf`, verify MIME type, use `wp_handle_upload()`.
+- No raw SQL concatenation. Always `$wpdb->prepare()`.
+
+## File Organization
+When adding features:
+- New API endpoints → `src/Api/RestApi.php` + `src/Api/Controllers/`
+- New database tables → `src/Database/Migrations/` + update `Activator`
+- New data access → `src/Database/Repository/`
+- New external service → Implement interface in `src/Services/Contracts/` first
+- New admin UI → `assets/src/admin/components/`
+- New frontend component → `assets/src/frontend/components/`
+
+## REST API Schema
+### POST `/wp-json/pdf-chat-rag/v1/chat`
+**Request:**
+```json
+{
+  "message": "string (required)",
+  "session_id": "string (optional, generated if missing)"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "response": "string",
+  "session_id": "string",
+  "context": []
+}
+```
+
+### GET `/wp-json/pdf-chat-rag/v1/chat/history?session_id=xxx`
+Returns array of history objects ordered chronologically (reversed, limit 20).
+
+### POST `/wp-json/pdf-chat-rag/v1/pdf/upload`
+Multipart form data. Requires `manage_options`.
+**Response:** `{ "document_id": "uuid", "chunks": 42 }`
+
+### GET `/wp-json/pdf-chat-rag/v1/settings`
+Returns current settings. Requires `manage_options`.
+
+### POST `/wp-json/pdf-chat-rag/v1/settings`
+Saves settings. Requires `manage_options`.
+
+## Python Microservice Contract
+The PHP MicroserviceClient expects the Python service to expose:
+- `POST /query` — Accepts `{ "message": "...", "session_id": "...", "history": [] }`
+- `POST /ingest` — Accepts multipart PDF upload, returns `{ "document_id": "...", "chunks": N }`
+- `GET /health` — Returns 200 if service is alive
+
+## Development Commands
+```bash
+# PHP dependencies
+composer install
+
+# Build frontend assets
+npm install
+npm run build        # Production
+npm run start        # Development watch
+```
+
+## Coding Standards
+- PHP: PSR-4 autoloading, strict types, typed properties where possible.
+- JS: Standard WordPress ESLint via @wordpress/scripts.
+- CSS: Scoped per component (`.pdf-chat-rag-admin`, `.pdf-chat-rag-widget`).
+
+## Known Gaps (Work in Progress)
+- `composer.json` and `package.json` need to be created
+- `PdfIndexTable` migration missing — `Activator` will fail on activation
+- `PdfController` and `SettingsController` classes missing — their routes will fatal error
+- `Pipeline.php` has uninitialised `$llm` and `$vectorStore` properties — `query()` will throw
+- `ChatWidget` React component missing — frontend widget will not mount
+- AdminApp save button has no `onClick` handler — settings cannot be saved from UI
+- No CSS files exist yet for admin or frontend
+- No `build/` directory (assets not built yet)
