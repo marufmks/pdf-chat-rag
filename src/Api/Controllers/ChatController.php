@@ -12,10 +12,9 @@ class ChatController {
     private Pipeline $pipeline;
     private ChatRepository $history;
 
-    public function __construct() {
+    public function __construct(Pipeline $pipeline) {
+        $this->pipeline = $pipeline;
         $this->history = new ChatRepository();
-        // Pipeline is injected with LLM/Vector implementations
-        $this->pipeline = new Pipeline($this->history);
     }
 
     public function sendMessage(WP_REST_Request $request): WP_REST_Response {
@@ -28,7 +27,7 @@ class ChatController {
 
         try {
             $result = $this->pipeline->query($message, $sessionId);
-            
+
             return new WP_REST_Response([
                 'success'    => true,
                 'response'   => $result['response'],

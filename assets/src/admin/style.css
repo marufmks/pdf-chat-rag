@@ -1,0 +1,19 @@
+.pdf-chat-rag-admin {
+    max-width: 800px;
+}
+
+.pdf-chat-rag-admin h1 {
+    margin-bottom: 20px;
+}
+
+.pdf-chat-rag-admin .components-panel__body {
+    margin-bottom: 16px;
+}
+
+.pdf-chat-rag-admin .components-notice {
+    margin: 0 0 16px;
+}
+
+.pdf-chat-rag-admin input[type="file"] {
+    margin-top: 8px;
+}

@@ -39,6 +39,44 @@ class MicroserviceClient {
         return $body;
     }
 
+    public function uploadPdf(string $filePath, string $filename): array {
+        $boundary = wp_generate_password(24, false);
+        $crlf = "\r\n";
+
+        $fileContent = file_get_contents($filePath);
+        if ($fileContent === false) {
+            throw new \Exception('Failed to read PDF file');
+        }
+
+        $body = '--' . $boundary . $crlf
+            . 'Content-Disposition: form-data; name="file"; filename="' . $filename . '"' . $crlf
+            . 'Content-Type: application/pdf' . $crlf . $crlf
+            . $fileContent . $crlf
+            . '--' . $boundary . '--';
+
+        $response = wp_remote_post("{$this->baseUrl}/ingest", [
+            'headers' => [
+                'Content-Type' => 'multipart/form-data; boundary=' . $boundary,
+                'X-API-Key'    => $this->apiKey,
+            ],
+            'body'    => $body,
+            'timeout' => 120,
+        ]);
+
+        if (is_wp_error($response)) {
+            throw new \Exception('Microservice error: ' . $response->get_error_message());
+        }
+
+        $code = wp_remote_retrieve_response_code($response);
+        $body = json_decode(wp_remote_retrieve_body($response), true);
+
+        if ($code !== 200 || empty($body)) {
+            throw new \Exception('Invalid microservice response');
+        }
+
+        return $body;
+    }
+
     public function healthCheck(): bool {
         $response = wp_remote_get("{$this->baseUrl}/health", ['timeout' => 5]);
         return !is_wp_error($response) && wp_remote_retrieve_response_code($response) === 200;

@@ -6,11 +6,19 @@ namespace PDFChatRAG\Core;
 use PDFChatRAG\Admin\AdminMenu;
 use PDFChatRAG\Api\RestApi;
 use PDFChatRAG\Frontend\AssetLoader;
+use PDFChatRAG\Services\Rag\Pipeline;
+use PDFChatRAG\Services\Rag\MicroserviceClient;
+use PDFChatRAG\Database\Repository\ChatRepository;
 
 class Plugin {
     private static ?self $instance = null;
 
+    private MicroserviceClient $client;
+    private Pipeline $pipeline;
+
     private function __construct() {
+        $this->client = new MicroserviceClient();
+        $this->pipeline = new Pipeline($this->client, new ChatRepository());
         $this->init();
     }
 
@@ -21,9 +29,13 @@ class Plugin {
         return self::$instance;
     }
 
+    public function getPipeline(): Pipeline {
+        return $this->pipeline;
+    }
+
     private function init(): void {
         new AdminMenu();
-        new RestApi();
+        new RestApi($this->pipeline);
         new AssetLoader();
 
         register_activation_hook(
@@ -33,7 +45,7 @@ class Plugin {
     }
 
     private function __clone() {}
-    
+
     public function __wakeup() {
         throw new \Exception("Cannot unserialize singleton");
     }

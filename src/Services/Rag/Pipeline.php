@@ -3,40 +3,40 @@ declare(strict_types=1);
 
 namespace PDFChatRAG\Services\Rag;
 
-use PDFChatRAG\Services\Contracts\LlmProviderInterface;
-use PDFChatRAG\Services\Contracts\VectorStoreInterface;
 use PDFChatRAG\Database\Repository\ChatRepository;
 
 class Pipeline {
-    private LlmProviderInterface $llm;
-    private VectorStoreInterface $vectorStore;
+    private MicroserviceClient $client;
     private ChatRepository $history;
 
-    public function __construct(ChatRepository $history) {
+    public function __construct(MicroserviceClient $client, ChatRepository $history) {
+        $this->client = $client;
         $this->history = $history;
-        // TODO: Resolve LLM and VectorStore from a container or settings
     }
 
     public function query(string $message, string $sessionId): array {
-        // 1. Embed query
-        $embedding = $this->llm->createEmbeddings($message);
-
-        // 2. Retrieve context
-        $context = $this->vectorStore->search($embedding, 5);
-
-        // 3. Get recent history
         $recentHistory = $this->history->getHistory($sessionId, 5);
 
-        // 4. Generate
-        $response = $this->llm->generateResponse($message, $context, $recentHistory);
+        $payload = [
+            'message'     => $message,
+            'session_id'  => $sessionId,
+            'history'     => $recentHistory,
+        ];
 
-        // 5. Persist
-        $this->history->save($sessionId, get_current_user_id(), $message, $response, $context);
+        $result = $this->client->query($payload);
+
+        $this->history->save(
+            $sessionId,
+            get_current_user_id(),
+            $message,
+            $result['response'] ?? '',
+            $result['context'] ?? []
+        );
 
         return [
-            'response'   => $response,
+            'response'   => $result['response'] ?? '',
             'session_id' => $sessionId,
-            'context'    => $context,
+            'context'    => $result['context'] ?? [],
         ];
     }
 }
