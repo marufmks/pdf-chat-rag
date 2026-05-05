@@ -7,45 +7,32 @@ use WP_REST_Request;
 use WP_REST_Response;
 
 class SettingsController {
-    private const OPTIONS = [
-        'pdf_chat_rag_service_url'  => 'string',
-        'pdf_chat_rag_service_key'  => 'string',
-        'pdf_chat_rag_openai_key'   => 'string',
-    ];
+    private const PREFIX = 'pdf_chat_rag_';
 
-    public function get(WP_REST_Request $request): WP_REST_Response {
-        $settings = [];
-
-        foreach (array_keys(self::OPTIONS) as $option) {
-            $settings[$option] = get_option($option, '');
-        }
-
+    public function get(): WP_REST_Response {
         return new WP_REST_Response([
-            'success'  => true,
-            'settings' => $settings,
-        ], 200);
+            'gemini_api_key' => $this->mask(get_option(self::PREFIX . 'gemini_api_key', '')),
+        ]);
     }
 
     public function save(WP_REST_Request $request): WP_REST_Response {
         $params = $request->get_json_params();
 
         if (!is_array($params)) {
-            return new WP_REST_Response(
-                ['error' => 'Invalid request body'],
-                400
-            );
+            return new WP_REST_Response(['error' => 'Invalid request body'], 400);
         }
 
-        foreach (self::OPTIONS as $option => $type) {
-            if (isset($params[$option])) {
-                $value = sanitize_text_field($params[$option]);
-                update_option($option, $value);
-            }
+        if (isset($params['gemini_api_key'])) {
+            update_option(self::PREFIX . 'gemini_api_key', sanitize_text_field($params['gemini_api_key']));
         }
 
-        return new WP_REST_Response([
-            'success' => true,
-            'message' => 'Settings saved successfully',
-        ], 200);
+        return new WP_REST_Response(['success' => true]);
+    }
+
+    private function mask(string $key): string {
+        if (strlen($key) < 12) {
+            return '';
+        }
+        return substr($key, 0, 6) . '...' . substr($key, -4);
     }
 }

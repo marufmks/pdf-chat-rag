@@ -21,7 +21,7 @@ class RestApi {
     public function registerRoutes(): void {
         register_rest_route(self::NAMESPACE, '/chat', [
             'methods'             => 'POST',
-            'callback'            => [new ChatController($this->pipeline), 'sendMessage'],
+            'callback'            => [new ChatController(), 'sendMessage'],
             'permission_callback' => '__return_true',
             'args'                => [
                 'message'    => ['required' => true, 'type' => 'string'],
@@ -31,7 +31,7 @@ class RestApi {
 
         register_rest_route(self::NAMESPACE, '/chat/history', [
             'methods'             => 'GET',
-            'callback'            => [new ChatController($this->pipeline), 'getHistory'],
+            'callback'            => [new ChatController(), 'getHistory'],
             'permission_callback' => '__return_true',
             'args'                => [
                 'session_id' => ['required' => true, 'type' => 'string'],

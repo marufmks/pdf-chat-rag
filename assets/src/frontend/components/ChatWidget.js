@@ -1,81 +1,103 @@
-import { useState, useRef } from '@wordpress/element';
-import { Button, Spinner } from '@wordpress/components';
-import { chatApi } from '../../utils/api';
+import { useState } from '@wordpress/element';
+import { ChatBox } from './ChatBox';
+import '../style.css';
 
 export const ChatWidget = () => {
-    const [messages, setMessages] = useState([]);
-    const [input, setInput] = useState('');
-    const [loading, setLoading] = useState(false);
-    const [sessionId] = useState(() => 'chat_' + Math.random().toString(36).substr(2, 9));
-    const messagesEndRef = useRef(null);
+	const [ isOpen, setIsOpen ] = useState( false );
 
-    const scrollToBottom = () => {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    };
+	if ( ! isOpen ) {
+		return (
+			<button
+				className="pdf-chat-rag-widget__toggle"
+				onClick={ () => setIsOpen( true ) }
+				aria-label="Open chat"
+			>
+				<svg
+					width="24"
+					height="24"
+					viewBox="0 0 24 24"
+					fill="none"
+					xmlns="http://www.w3.org/2000/svg"
+				>
+					<path
+						d="M20 2H4C2.9 2 2 2.9 2 4V22L6 18H20C21.1 18 22 17.1 22 16V4C22 2.9 21.1 2 20 2Z"
+						fill="white"
+					/>
+					<circle cx="8.5" cy="10" r="1.5" fill="#6366F1" />
+					<circle cx="12" cy="10" r="1.5" fill="#6366F1" />
+					<circle cx="15.5" cy="10" r="1.5" fill="#6366F1" />
+				</svg>
+			</button>
+		);
+	}
 
-    const handleSubmit = async (e) => {
-        e.preventDefault();
-        if (!input.trim() || loading) return;
-
-        const userMessage = input.trim();
-        setInput('');
-        setMessages((prev) => [...prev, { role: 'user', content: userMessage }]);
-        setLoading(true);
-
-        try {
-            const res = await chatApi.sendMessage(userMessage, sessionId);
-            setMessages((prev) => [
-                ...prev,
-                { role: 'assistant', content: res.response },
-            ]);
-        } catch (err) {
-            setMessages((prev) => [
-                ...prev,
-                { role: 'assistant', content: 'Error: ' + (err.message || 'Something went wrong') },
-            ]);
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    if (typeof scrollToBottom !== 'undefined') {
-        // Trigger scroll after render
-    }
-
-    return (
-        <div className="pdf-chat-rag-widget">
-            <div className="pdf-chat-rag-widget__header">
-                <h3>Chat with PDF</h3>
-            </div>
-
-            <div className="pdf-chat-rag-widget__messages">
-                {messages.map((msg, i) => (
-                    <div key={i} className={`pdf-chat-rag-widget__message pdf-chat-rag-widget__message--${msg.role}`}>
-                        <div className="pdf-chat-rag-widget__message-content">
-                            {msg.content}
-                        </div>
-                    </div>
-                ))}
-                {loading && (
-                    <div className="pdf-chat-rag-widget__message pdf-chat-rag-widget__message--assistant">
-                        <Spinner />
-                    </div>
-                )}
-                <div ref={messagesEndRef} />
-            </div>
-
-            <form className="pdf-chat-rag-widget__input" onSubmit={handleSubmit}>
-                <input
-                    type="text"
-                    value={input}
-                    onChange={(e) => setInput(e.target.value)}
-                    placeholder="Ask a question..."
-                    disabled={loading}
-                />
-                <Button type="submit" variant="primary" disabled={loading || !input.trim()}>
-                    Send
-                </Button>
-            </form>
-        </div>
-    );
+	return (
+		<div className="pdf-chat-rag-widget">
+			<div className="pdf-chat-rag-widget__header">
+				<div className="pdf-chat-rag-widget__header-brand">
+					<div className="pdf-chat-rag-widget__header-icon">
+						<svg
+							width="20"
+							height="20"
+							viewBox="0 0 20 20"
+							fill="none"
+						>
+							<path
+								d="M13.5 2H5C4.17 2 3.5 2.67 3.5 3.5V16.5C3.5 17.33 4.17 18 5 18H14C14.83 18 15.5 17.33 15.5 16.5V4.5L13.5 2Z"
+								fill="white"
+								opacity="0.9"
+							/>
+							<path d="M13 2V5H16" fill="white" opacity="0.6" />
+							<rect
+								x="5.5"
+								y="8.5"
+								width="9"
+								height="1"
+								rx="0.5"
+								fill="white"
+								opacity="0.4"
+							/>
+							<rect
+								x="5.5"
+								y="11"
+								width="7"
+								height="1"
+								rx="0.5"
+								fill="white"
+								opacity="0.4"
+							/>
+							<rect
+								x="5.5"
+								y="13.5"
+								width="5"
+								height="1"
+								rx="0.5"
+								fill="white"
+								opacity="0.4"
+							/>
+						</svg>
+					</div>
+					<div className="pdf-chat-rag-widget__header-text">
+						<h3>PDF Assistant</h3>
+						<span>Ask anything about your documents</span>
+					</div>
+				</div>
+				<button
+					className="pdf-chat-rag-widget__close"
+					onClick={ () => setIsOpen( false ) }
+					aria-label="Close chat"
+				>
+					<svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+						<path
+							d="M4 4L12 12M12 4L4 12"
+							stroke="currentColor"
+							strokeWidth="2"
+							strokeLinecap="round"
+						/>
+					</svg>
+				</button>
+			</div>
+			<ChatBox />
+		</div>
+	);
 };

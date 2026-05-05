@@ -6,19 +6,22 @@ namespace PDFChatRAG\Core;
 use PDFChatRAG\Admin\AdminMenu;
 use PDFChatRAG\Api\RestApi;
 use PDFChatRAG\Frontend\AssetLoader;
+use PDFChatRAG\Services\GeminiClient;
+use PDFChatRAG\Services\PhpVectorStore;
 use PDFChatRAG\Services\Rag\Pipeline;
-use PDFChatRAG\Services\Rag\MicroserviceClient;
 use PDFChatRAG\Database\Repository\ChatRepository;
 
 class Plugin {
     private static ?self $instance = null;
 
-    private MicroserviceClient $client;
     private Pipeline $pipeline;
 
     private function __construct() {
-        $this->client = new MicroserviceClient();
-        $this->pipeline = new Pipeline($this->client, new ChatRepository());
+        $this->pipeline = new Pipeline(
+            new GeminiClient(),
+            new PhpVectorStore(),
+            new ChatRepository()
+        );
         $this->init();
     }
 
@@ -42,6 +45,9 @@ class Plugin {
             PDF_CHAT_RAG_PLUGIN_DIR . 'pdf-chat-rag.php',
             [Activator::class, 'activate']
         );
+
+        add_action('admin_init', [Activator::class, 'ensureTables']);
+        add_action('rest_api_init', [Activator::class, 'ensureTables']);
     }
 
     private function __clone() {}

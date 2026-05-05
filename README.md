@@ -1,22 +1,21 @@
 # PDF Chat RAG
 
-A WordPress plugin that enables users to chat with uploaded PDF documents using a Retrieval-Augmented Generation (RAG) pipeline.
-
-The plugin acts as a PHP orchestrator and frontend host, delegating heavy AI/vector operations to a Python FastAPI microservice.
+A WordPress plugin that enables users to chat with uploaded PDF documents using a Retrieval-Augmented Generation (RAG) pipeline — entirely in PHP. No external microservices, Docker, or Python required.
 
 ## Features
 
 - **Chat with PDFs**: Ask questions about your PDF documents through a conversational interface
 - **Session-based conversations**: Maintain context across multiple messages in a chat session
 - **Chat history**: View and retrieve past conversation history
-- **Admin dashboard**: Upload PDFs and configure service settings from the WordPress admin
-- **Frontend widget**: Floating chat widget on singular posts/pages
+- **Admin dashboard**: Upload PDFs and configure your Gemini API key from the WordPress admin
+- **Floating chat widget**: Beautiful gradient purple bubble button on posts/pages that opens a sleek chat panel
+- **Shortcode `[pdf_chat]`**: Embed a polished chat widget inline on any page or post
 
 ## Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│                    WordPress (PHP)                       │
+│                    WordPress (PHP-Native)                 │
 │  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌─────────┐ │
 │  │  Admin   │  │ REST API │  │ Frontend │  │   DB    │ │
 │  │  (React) │  │ Routes   │  │  Widget  │  │ (wpdb)  │ │
@@ -27,39 +26,46 @@ The plugin acts as a PHP orchestrator and frontend host, delegating heavy AI/vec
 │              ┌───────▼─────────────▼───────┐             │
 │              │         Pipeline            │             │
 │              │  (embed → retrieve → gen)   │             │
-│              └──────────────┬──────────────┘             │
-│                             │                            │
-│              ┌──────────────▼──────────────┐             │
-│              │     MicroserviceClient      │             │
-│              │   (wp_remote_post / JSON)   │             │
-│              └──────────────┬──────────────┘             │
-└─────────────────────────────┼───────────────────────────┘
-                              │ HTTP + JSON
-                              ▼
-┌─────────────────────────────────────────────────────────┐
-│                Python FastAPI Microservice                │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌─────────┐ │
-│  │ PDF      │  │ Embed    │  │ Vector   │  │   LLM   │ │
-│  │ Parser   │  │ Query    │  │ Store    │  │ (OpenAI)│ │
-│  └──────────┘  └──────────┘  └──────────┘  └─────────┘ │
+│              └───────┬──────────┬──────────┘             │
+│                      │          │                         │
+│           ┌──────────▼──┐  ┌───▼──────────────┐         │
+│           │ GeminiClient│  │  PhpVectorStore  │         │
+│           │  (wp_remote │  │  (cosine sim +   │         │
+│           │   _post())  │  │   MySQL JSON)    │         │
+│           └─────────────┘  └──────────────────┘         │
+│                                                         │
+│  ┌──────────────┐  ┌──────────────┐                    │
+│  │ WpPdfParser  │  │ TextChunker  │                    │
+│  │(smalot lib)  │  │  (sentence   │                    │
+│  │              │  │   splitting) │                    │
+│  └──────────────┘  └──────────────┘                    │
 └─────────────────────────────────────────────────────────┘
 ```
 
 ### Request Flow
 
-1. User sends a message via the frontend chat widget
-2. WordPress REST API receives the request (`POST /pdf-chat-rag/v1/chat`)
-3. `ChatController` delegates to the `Pipeline`
-4. `Pipeline` uses `MicroserviceClient` to send the query to the Python FastAPI service
-5. Response is returned to the user and persisted in the database
+1. User uploads a PDF via the admin dashboard
+2. `WpPdfParser` (smalot/pdfparser) extracts text from the PDF
+3. `TextChunker` splits text into ~1000 character chunks with overlap
+4. `GeminiClient` calls Google Gemini `gemini-embedding-001` for each chunk
+5. `PhpVectorStore` stores chunks + embeddings as JSON in `{prefix}pdf_vectors`
+6. User sends a chat message via widget or shortcode
+7. `Pipeline` embeds the query, searches vectors via brute-force cosine similarity, and calls Gemini `gemini-2.5-flash` with retrieved context
+8. Response is returned and saved to `{prefix}pdf_chat_history`
 
 ## Requirements
 
-- PHP 7.4+
+- PHP 8.0+
 - WordPress 6.0+
 - Composer
 - Node.js & npm (for frontend builds)
-- Python FastAPI microservice (developed separately)
+- Google Gemini API key (free tier available)
+
+### Honest Limitations
+
+- **Vector search is O(n)** — for <10,000 text chunks (~1,000 pages), search takes ~20–80ms in PHP 8+. Beyond that, swap `PhpVectorStore` for a hosted vector DB implementation.
+- **No OCR** — scanned/image-based PDFs will not work. Only text-based PDFs.
+- **PDF parsing** via `smalot/pdfparser` is less robust than Python's `PyMuPDF` on complex layouts.
 
 ## Installation
 
@@ -84,12 +90,30 @@ Via WordPress admin or WP-CLI:
 wp plugin activate pdf-chat-rag
 ```
 
-### 4. Configure the microservice
+### 4. Configure Gemini
 
 Navigate to **PDF Chat RAG** in the WordPress admin and set:
-- **Python Microservice URL** (default: `http://localhost:8000`)
-- **Microservice API Key**
-- **OpenAI API Key** (if your microservice requires it)
+- **Gemini API Key**
+
+Get a free API key at [Google AI Studio](https://aistudio.google.com/apikey). Free tier: 15 requests per minute.
+
+For added security, define the key in `wp-config.php`:
+```php
+define('PDF_CHAT_RAG_GEMINI_API_KEY', 'AIza-your-key-here');
+```
+This overrides any database-stored key and is never exposed via the REST API.
+
+### 5. Embed the chat widget
+
+Use the shortcode on any page or post:
+```
+[pdf_chat]
+```
+
+Or with a custom session ID:
+```
+[pdf_chat session_id="my_custom_session"]
+```
 
 ## Development
 
@@ -102,12 +126,15 @@ pdf-chat-rag/
 ├── package.json                     # Frontend build config
 ├── webpack.config.js                # wp-scripts multi-entry override
 ├── .gitignore
-├── Agents.md                        # AI Agent context file
+├── AGENTS.md                        # AI Agent context file
+├── README.md                        # This file
 ├── build/                           # Compiled assets (wp-scripts output)
 │   ├── admin.js
 │   ├── admin.css
 │   ├── frontend.js
-│   └── frontend.css
+│   ├── frontend.css
+│   ├── shortcode.js
+│   └── shortcode.css
 ├── assets/                          # Frontend source
 │   └── src/
 │       ├── admin/
@@ -118,7 +145,11 @@ pdf-chat-rag/
 │       ├── frontend/
 │       │   ├── index.js
 │       │   ├── components/
-│       │   │   └── ChatWidget.js
+│       │   │   ├── ChatWidget.js    # Floating bubble + panel
+│       │   │   └── ChatBox.js       # Shared chat UI (used by widget + shortcode)
+│       │   └── style.css
+│       ├── shortcode/
+│       │   ├── index.js             # Shortcode React entry point
 │       │   └── style.css
 │       └── utils/
 │           └── api.js
@@ -142,19 +173,21 @@ pdf-chat-rag/
 │   │   │   ├── VectorStoreInterface.php
 │   │   │   └── LlmProviderInterface.php
 │   │   ├── Rag/
-│   │   │   ├── Pipeline.php         # RAG orchestration
-│   │   │   └── MicroserviceClient.php
-│   │   └── WordPress/
-│   │       └── WpPdfParser.php
+│   │   │   └── Pipeline.php         # RAG orchestration
+│   │   ├── GeminiClient.php         # Gemini chat + embeddings
+│   │   ├── PhpVectorStore.php       # Brute-force cosine similarity
+│   │   ├── TextChunker.php          # Sentence-aware text splitting
+│   │   └── WpPdfParser.php          # smalot/pdfparser wrapper
 │   ├── Database/
 │   │   ├── Migrations/
 │   │   │   ├── ChatHistoryTable.php
-│   │   │   └── PdfIndexTable.php
+│   │   │   ├── PdfIndexTable.php
+│   │   │   └── VectorTable.php      # New: pdf_vectors table
 │   │   └── Repository/
 │   │       ├── ChatRepository.php
 │   │       └── PdfRepository.php
 │   └── Frontend/
-│       └── AssetLoader.php
+│       └── AssetLoader.php          # Enqueues assets + registers shortcode
 └── vendor/                          # Composer autoload
 ```
 
@@ -226,30 +259,68 @@ POST /wp-json/pdf-chat-rag/v1/settings   # Save settings
 
 Both require `manage_options` capability.
 
-### Python Microservice Contract
+### Shortcode
 
-The PHP `MicroserviceClient` expects the Python service to expose:
+```
+[pdf_chat]
+[pdf_chat session_id="custom_session"]
+```
 
-| Endpoint   | Method | Description                              |
-|------------|--------|------------------------------------------|
-| `/query`   | POST   | Process a chat query with RAG pipeline   |
-| `/ingest`  | POST   | Upload and index a PDF document          |
-| `/health`  | GET    | Health check                             |
+Renders an inline chat widget. Assets are only loaded on pages where the shortcode is used.
+
+### AI/Vector Stack (PHP-Native)
+
+The plugin uses pure PHP for the entire RAG pipeline. No external microservice is required.
+
+- **PDF Parsing**: `smalot/pdfparser` (Composer) extracts text from text-based PDFs.
+- **Text Chunking**: `Services\TextChunker` splits text into ~1,000 character chunks with overlap.
+- **Embeddings**: `Services\GeminiClient` calls Google Gemini's `gemini-embedding-001` API via `wp_remote_post()`.
+- **Vector Storage**: `Services\PhpVectorStore` stores embeddings as JSON in `{prefix}pdf_vectors`
+  and performs brute-force cosine similarity in PHP. Suitable for <20,000 chunks.
+- **LLM Generation**: `Services\GeminiClient` calls Google Gemini's `gemini-2.5-flash` model.
+- **Pipeline**: `Services\Rag\Pipeline` orchestrates: Embed → Retrieve → Generate → Store.
+
+#### Performance
+
+| Metric | Expected Performance |
+|:---|:---|
+| Embedding creation | ~500ms per batch of 100 chunks |
+| Vector search | ~20–80ms for 5,000 chunks; ~100–300ms for 20,000 chunks |
+| Memory usage | ~2MB per 1,000 chunks during search |
+| PDF parsing | ~1s per 50 pages |
+
+#### Scaling Path
+
+If vector search performance degrades, implement a new `VectorStoreInterface` (e.g., `PineconeStore`)
+that calls a hosted vector DB via HTTP. The rest of the plugin remains unchanged.
 
 ### Coding Standards
 
 - **PHP**: PSR-4 autoloading, `declare(strict_types=1)`, typed properties, namespaces under `PDFChatRAG\`
 - **JavaScript**: WordPress ESLint via `@wordpress/scripts`, `@wordpress/components` for admin UI
-- **CSS**: Scoped per component (`.pdf-chat-rag-admin`, `.pdf-chat-rag-widget`)
+- **CSS**: Scoped per component (`.pdf-chat-rag-admin`, `.pdf-chat-rag-widget`, `.pdf-chat-rag-chatbox`, `.pdf-chat-rag-shortcode`)
+
+### UI Design System
+
+The frontend chat interface uses a modern design language:
+
+- **Primary accent**: Indigo gradient (`#6366F1` → `#8B5CF6`)
+- **User messages**: Purple gradient background with white text
+- **Assistant messages**: White background with subtle shadow
+- **Header**: Gradient purple with decorative circular accents
+- **Toggle button**: Rounded-square with gradient and glow shadow
+- **Animations**: Fade-in, slide-up, typing bounce, and spin effects
+- **Typography**: System font stack (-apple-system, BlinkMacSystemFont, Segoe UI, Roboto)
 
 ## Database
 
 Custom tables created on activation:
 
-| Table                        | Purpose                  |
-|------------------------------|--------------------------|
-| `{prefix}pdf_chat_history`   | Chat message history     |
-| `{prefix}pdf_index`          | PDF document index       |
+| Table                        | Purpose                          |
+|------------------------------|----------------------------------|
+| `{prefix}pdf_chat_history`   | Chat message history             |
+| `{prefix}pdf_index`          | PDF document index               |
+| `{prefix}pdf_vectors`        | Vector chunks + embeddings (JSON)|
 
 ## License
 

@@ -1,19 +1,47 @@
 .pdf-chat-rag-admin {
-    max-width: 800px;
+	max-width: 800px;
 }
 
 .pdf-chat-rag-admin h1 {
-    margin-bottom: 20px;
+	margin-bottom: 8px;
+}
+
+.pdf-chat-rag-admin > .description {
+	margin-bottom: 24px;
 }
 
 .pdf-chat-rag-admin .components-panel__body {
-    margin-bottom: 16px;
+	margin-bottom: 16px;
 }
 
 .pdf-chat-rag-admin .components-notice {
-    margin: 0 0 16px;
+	margin: 0 0 16px;
 }
 
-.pdf-chat-rag-admin input[type="file"] {
-    margin-top: 8px;
+.pdf-chat-rag-admin__field {
+	margin-bottom: 16px;
+}
+
+.pdf-chat-rag-admin__field:last-of-type {
+	margin-bottom: 24px;
+}
+
+.pdf-chat-rag-admin__upload {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	margin-top: 8px;
+}
+
+.pdf-chat-rag-admin__upload input[type="file"] {
+	margin: 0;
+}
+
+.pdf-chat-rag-admin code {
+	display: block;
+	background: #f0f0f1;
+	padding: 8px 12px;
+	border-radius: 4px;
+	font-size: 14px;
+	margin: 8px 0;
 }
